@@ -1,4 +1,5 @@
 import { PasteInput } from "@/components/feed/PasteInput";
+import { StarterRepos } from "@/components/feed/StarterRepos";
 import { OpportunityCard } from "@/components/opportunities/OpportunityCard";
 import { requireUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
@@ -95,15 +96,7 @@ export default async function FeedPage({
       )}
 
       {feed.length === 0 ? (
-        <div className="panel p-4 text-[13px] text-[var(--text-muted)]">
-          <p className="mb-2">No ranked opportunities yet.</p>
-          <p>
-            Paste a public repository above — for example{" "}
-            <span className="mono">facebook/react</span> or a smaller project you
-            care about — with skills like React + TypeScript and a learning goal
-            like testing.
-          </p>
-        </div>
+        <StarterRepos />
       ) : (
         feed.map((item) => (
           <OpportunityCard

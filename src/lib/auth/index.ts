@@ -20,7 +20,14 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
   );
 }
 
-if (process.env.ENABLE_DEV_LOGIN === "true" || !process.env.GITHUB_CLIENT_ID) {
+function devLoginAllowed() {
+  if (process.env.NODE_ENV === "production") return false;
+  return (
+    process.env.ENABLE_DEV_LOGIN === "true" || !process.env.GITHUB_CLIENT_ID
+  );
+}
+
+if (devLoginAllowed()) {
   providers.push(
     Credentials({
       id: "dev-login",
