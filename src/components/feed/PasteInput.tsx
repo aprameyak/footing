@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export function PasteInput({ compact = false }: { compact?: boolean }) {
+export function PasteInput() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +35,7 @@ export function PasteInput({ compact = false }: { compact?: boolean }) {
   }
 
   return (
-    <form onSubmit={onSubmit} className={compact ? "" : "mb-6"}>
+    <form onSubmit={onSubmit} className="mb-6">
       <label className="block text-[12px] text-[var(--text-faint)] mb-1.5">
         Paste a GitHub repo or issue
       </label>

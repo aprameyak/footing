@@ -21,6 +21,7 @@ type FeedItem = {
 export default function SearchPage() {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [language, setLanguage] = useState("");
   const [issueType, setIssueType] = useState("");
   const [complexity, setComplexity] = useState("");
@@ -34,11 +35,22 @@ export default function SearchPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const res = await fetch("/api/opportunities");
-      const data = await res.json();
-      if (cancelled) return;
-      setFeed(data.feed || []);
-      setLoaded(true);
+      try {
+        const res = await fetch("/api/opportunities");
+        const data = await res.json();
+        if (cancelled) return;
+        if (!res.ok) {
+          setError(data.error || "Failed to load opportunities");
+          setLoaded(true);
+          return;
+        }
+        setFeed(data.feed || []);
+        setLoaded(true);
+      } catch {
+        if (cancelled) return;
+        setError("Failed to load opportunities");
+        setLoaded(true);
+      }
     })();
     return () => {
       cancelled = true;
@@ -161,6 +173,10 @@ export default function SearchPage() {
 
       {!loaded ? (
         <p className="text-[12px] text-[var(--text-faint)]">Loading…</p>
+      ) : error ? (
+        <div className="panel p-4 text-[13px] text-[var(--negative)]">
+          {error}
+        </div>
       ) : filtered.length === 0 ? (
         <div className="panel p-4 text-[13px] text-[var(--text-muted)]">
           No matches. Analyze repositories from the feed first.

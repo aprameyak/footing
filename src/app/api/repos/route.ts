@@ -17,8 +17,20 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = z.object({ input: z.string().min(3) }).parse(await req.json());
-  const parsed = parseGitHubInput(body.input);
+  let json: unknown;
+  try {
+    json = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const body = z.object({ input: z.string().min(3) }).safeParse(json);
+  if (!body.success) {
+    return NextResponse.json(
+      { error: "Provide a GitHub repository or issue URL" },
+      { status: 400 }
+    );
+  }
+  const parsed = parseGitHubInput(body.data.input);
   if (!parsed) {
     return NextResponse.json(
       { error: "Could not parse GitHub repository or issue URL" },
@@ -83,7 +95,7 @@ export async function POST(req: Request) {
         userId: session.user.id,
         opportunityId: focusOpportunityId,
         event: "repo_analyzed",
-        metadata: { fullName, input: body.input },
+        metadata: { fullName, input: body.data.input },
       },
     });
 

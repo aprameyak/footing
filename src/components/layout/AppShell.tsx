@@ -26,7 +26,7 @@ export async function AppShell({
             footing
           </div>
           <div className="text-[11px] text-[var(--text-faint)] mt-0.5">
-            contribution infrastructure
+            open-source contribution guide
           </div>
         </Link>
         <nav className="flex lg:flex-col gap-1 overflow-x-auto">

@@ -22,8 +22,3 @@ export async function requireUser() {
   }
   return { session, user };
 }
-
-export async function getAccessToken() {
-  const session = await auth();
-  return session?.accessToken || process.env.GITHUB_TOKEN || null;
-}

@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { STUCK_CATEGORIES, ABANDON_REASONS } from "@/lib/utils/github-parse";
+import {
+  ABANDON_REASONS,
+  CONTRIBUTION_STAGES,
+  STUCK_CATEGORIES,
+} from "@/lib/utils/github-parse";
 
 type ChecklistItem = {
   id: string;
@@ -65,16 +69,6 @@ type ContributionPayload = {
     };
   };
 };
-
-const STAGES = [
-  "understand",
-  "setup",
-  "reproduce",
-  "investigate",
-  "implement",
-  "verify",
-  "submit",
-];
 
 export function Workspace({ data }: { data: ContributionPayload }) {
   const router = useRouter();
@@ -188,7 +182,7 @@ export function Workspace({ data }: { data: ContributionPayload }) {
       </div>
 
       <div className="mt-5 flex flex-wrap gap-1">
-        {STAGES.map((s) => (
+        {CONTRIBUTION_STAGES.map((s) => (
           <button
             key={s}
             type="button"
