@@ -1,6 +1,6 @@
 # footing
 
-Infrastructure for turning developers who want real-world experience into productive open-source contributors.
+Find realistic open-source work and get through setup, investigation, and a useful PR — without replacing the engineering.
 
 Not a `good first issue` directory. Not an AI coding agent. Not a gamified social network.
 
@@ -21,24 +21,35 @@ Not a `good first issue` directory. Not an AI coding agent. Not a gamified socia
 - Tailwind CSS
 - GitHub OAuth (minimal scopes) + optional local demo login
 - GitHub REST API via Octokit
+- Auth.js v5 (beta)
+
+## Prerequisites
+
+- Node.js 20+
+- [pnpm](https://pnpm.io) 10+
+- PostgreSQL with `createdb` available
 
 ## Setup
 
 ```bash
 createdb footing
 cp .env.example .env
+# set AUTH_SECRET, e.g. openssl rand -base64 32
 pnpm install
 pnpm db:push
 pnpm dev
 ```
 
-Environment:
+Do not commit `.env`. Use `.env.example` as the template.
+
+### Environment
 
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection |
-| `AUTH_SECRET` | NextAuth secret |
-| `ENABLE_DEV_LOGIN` | Local credentials login (`true` by default when OAuth unset) |
+| `AUTH_SECRET` | Auth.js secret (required) |
+| `AUTH_URL` / `NEXTAUTH_URL` | App URL (`http://localhost:3000`) |
+| `ENABLE_DEV_LOGIN` | Local credentials login (`true` when OAuth unset) |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | GitHub OAuth (`read:user user:email`) |
 | `GITHUB_TOKEN` | Optional token for higher public API rate limits |
 
@@ -51,4 +62,8 @@ Sign in → set skills to React + TypeScript → learning goal Testing → paste
 - Explanations over opaque scores
 - Facts vs inference are labeled
 - Setup commands have provenance (`View source`)
-- AI/heuristics reduce friction; they do not write the PR for you
+- Heuristics reduce friction; they do not write the PR for you
+
+## License
+
+MIT

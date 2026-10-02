@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { formatRelative } from "@/lib/utils/cn";
+import { formatRelative } from "@/lib/utils/time";
 
 type Detail = {
   id: string;

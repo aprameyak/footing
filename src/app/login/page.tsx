@@ -13,6 +13,10 @@ export default async function LoginPage() {
         githubEnabled={Boolean(
           process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET
         )}
+        devLoginEnabled={
+          process.env.ENABLE_DEV_LOGIN === "true" ||
+          !process.env.GITHUB_CLIENT_ID
+        }
       />
     </Providers>
   );

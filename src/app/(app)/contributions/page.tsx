@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db/prisma";
-import { formatRelative } from "@/lib/utils/cn";
+import { formatRelative } from "@/lib/utils/time";
 
 export default async function ContributionsPage() {
   const { user } = await requireUser();

@@ -31,16 +31,19 @@ export default function SearchPage() {
   );
   const [q, setQ] = useState("");
 
-  async function load() {
-    const res = await fetch("/api/opportunities");
-    const data = await res.json();
-    setFeed(data.feed || []);
-    setLoaded(true);
-  }
-
   useEffect(() => {
-    if (!loaded) void load();
-  }, [loaded]);
+    let cancelled = false;
+    (async () => {
+      const res = await fetch("/api/opportunities");
+      const data = await res.json();
+      if (cancelled) return;
+      setFeed(data.feed || []);
+      setLoaded(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filtered = feed.filter((item) => {
     if (language && !item.languages.some((l) => l.toLowerCase() === language.toLowerCase())) {

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatRelative } from "@/lib/utils/cn";
+import { formatRelative } from "@/lib/utils/time";
 
 export type OpportunityCardData = {
   id: string;

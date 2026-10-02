@@ -32,5 +32,5 @@ export const authConfig = {
     },
   },
   trustHost: true,
-  secret: process.env.AUTH_SECRET || "dev-secret-change-me",
+  secret: process.env.AUTH_SECRET,
 } satisfies NextAuthConfig;

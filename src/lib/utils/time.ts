@@ -1,10 +1,3 @@
-import { clsx, type ClassValue } from "clsx";
-import { twMerge } from "tailwind-merge";
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-
 export function formatRelative(date: Date | string | null | undefined): string {
   if (!date) return "unknown";
   const d = typeof date === "string" ? new Date(date) : date;
@@ -19,10 +12,3 @@ export function formatRelative(date: Date | string | null | undefined): string {
   const months = Math.floor(days / 30);
   return `${months}mo ago`;
 }
-
-export type ProvenanceItem = {
-  label: string;
-  source?: string | null;
-  confidence: "high" | "medium" | "low";
-  inferred: boolean;
-};

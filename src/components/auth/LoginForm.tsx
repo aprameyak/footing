@@ -3,7 +3,13 @@
 import { signIn } from "next-auth/react";
 import { useState } from "react";
 
-export function LoginForm({ githubEnabled }: { githubEnabled: boolean }) {
+export function LoginForm({
+  githubEnabled,
+  devLoginEnabled,
+}: {
+  githubEnabled: boolean;
+  devLoginEnabled: boolean;
+}) {
   const [login, setLogin] = useState("devuser");
   const [loading, setLoading] = useState(false);
 
@@ -26,38 +32,40 @@ export function LoginForm({ githubEnabled }: { githubEnabled: boolean }) {
           </button>
         )}
 
-        <div className="panel p-4">
-          <div className="text-[12px] text-[var(--text-faint)] mb-2">
-            Local / demo sign-in
+        {devLoginEnabled && (
+          <div className="panel p-4">
+            <div className="text-[12px] text-[var(--text-faint)] mb-2">
+              Local / demo sign-in
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={login}
+                onChange={(e) => setLogin(e.target.value)}
+                className="flex-1 bg-[var(--bg)] border border-[var(--border)] px-2 py-1.5 text-[12px] mono outline-none"
+                placeholder="username"
+              />
+              <button
+                type="button"
+                disabled={loading}
+                onClick={async () => {
+                  setLoading(true);
+                  await signIn("dev-login", {
+                    login,
+                    callbackUrl: "/feed",
+                  });
+                  setLoading(false);
+                }}
+                className="px-3 py-1.5 text-[12px] border border-[var(--border)]"
+              >
+                {loading ? "…" : "Enter"}
+              </button>
+            </div>
+            <p className="mt-2 text-[11px] text-[var(--text-faint)]">
+              Uses public GitHub API. Set GITHUB_TOKEN for higher rate limits.
+              OAuth requests only read:user and user:email.
+            </p>
           </div>
-          <div className="flex gap-2">
-            <input
-              value={login}
-              onChange={(e) => setLogin(e.target.value)}
-              className="flex-1 bg-[var(--bg)] border border-[var(--border)] px-2 py-1.5 text-[12px] mono outline-none"
-              placeholder="username"
-            />
-            <button
-              type="button"
-              disabled={loading}
-              onClick={async () => {
-                setLoading(true);
-                await signIn("dev-login", {
-                  login,
-                  callbackUrl: "/feed",
-                });
-                setLoading(false);
-              }}
-              className="px-3 py-1.5 text-[12px] border border-[var(--border)]"
-            >
-              {loading ? "…" : "Enter"}
-            </button>
-          </div>
-          <p className="mt-2 text-[11px] text-[var(--text-faint)]">
-            Uses public GitHub API. Set GITHUB_TOKEN for higher rate limits.
-            OAuth requests only read:user and user:email.
-          </p>
-        </div>
+        )}
       </div>
     </div>
   );
