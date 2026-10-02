@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db/prisma";
 import { z } from "zod";
 import { mentorGuidance } from "@/lib/analysis/stuck";
 import { createOctokit } from "@/lib/github/client";
+import { toJson } from "@/lib/utils/json";
 
 export async function GET(req: Request) {
   const session = await auth();
@@ -35,7 +36,7 @@ export async function GET(req: Request) {
     if (!contribution) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    return NextResponse.json(contribution);
+    return NextResponse.json(toJson(contribution));
   }
 
   const list = await prisma.contribution.findMany({
@@ -50,7 +51,7 @@ export async function GET(req: Request) {
       },
     },
   });
-  return NextResponse.json(list);
+  return NextResponse.json(toJson(list));
 }
 
 export async function POST(req: Request) {
@@ -59,6 +60,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const userId = session.user.id;
   const body = await req.json();
   const action = body.action as string;
 
@@ -66,10 +68,7 @@ export async function POST(req: Request) {
     const { opportunityId } = z
       .object({ opportunityId: z.string() })
       .parse(body);
-    const contribution = await createContributionWorkspace(
-      session.user.id,
-      opportunityId
-    );
+    const contribution = await createContributionWorkspace(userId, opportunityId);
     return NextResponse.json({ id: contribution.id });
   }
 
@@ -81,37 +80,42 @@ export async function POST(req: Request) {
         complete: z.boolean().optional(),
       })
       .parse(body);
+
+    const owned = await prisma.contribution.findFirst({
+      where: { id: data.contributionId, userId },
+    });
+    if (!owned) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
     await prisma.contribution.update({
-      where: { id: data.contributionId },
+      where: { id: owned.id },
       data: {
         currentStage: data.stage,
         status:
           data.stage === "implement"
             ? "implementation_in_progress"
             : undefined,
-        setupCompletedAt:
-          data.stage === "reproduce" || data.complete
-            ? new Date()
-            : undefined,
       },
     });
+
     if (data.complete) {
       await prisma.contributionStage.updateMany({
         where: {
-          contributionId: data.contributionId,
+          contributionId: owned.id,
           stage: data.stage,
         },
         data: { completedAt: new Date() },
       });
       await prisma.contributionOutcome.create({
         data: {
-          contributionId: data.contributionId,
+          contributionId: owned.id,
           event: `stage_${data.stage}_completed`,
         },
       });
       if (data.stage === "setup") {
         await prisma.contribution.update({
-          where: { id: data.contributionId },
+          where: { id: owned.id },
           data: {
             setupCompletedAt: new Date(),
             status: "setup_completed",
@@ -119,9 +123,9 @@ export async function POST(req: Request) {
         });
         await prisma.recommendationEvent.create({
           data: {
-            userId: session.user.id,
+            userId,
             event: "setup_completed",
-            metadata: { contributionId: data.contributionId },
+            metadata: { contributionId: owned.id },
           },
         });
       }
@@ -136,8 +140,19 @@ export async function POST(req: Request) {
         checked: z.boolean(),
       })
       .parse(body);
+
+    const item = await prisma.contributionChecklistItem.findFirst({
+      where: {
+        id: data.itemId,
+        contribution: { userId },
+      },
+    });
+    if (!item) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
     await prisma.contributionChecklistItem.update({
-      where: { id: data.itemId },
+      where: { id: item.id },
       data: { checked: data.checked },
     });
     return NextResponse.json({ ok: true });
@@ -151,8 +166,8 @@ export async function POST(req: Request) {
         detail: z.string().optional(),
       })
       .parse(body);
-    const contribution = await prisma.contribution.findFirstOrThrow({
-      where: { id: data.contributionId, userId: session.user.id },
+    const contribution = await prisma.contribution.findFirst({
+      where: { id: data.contributionId, userId },
       include: {
         checklistItems: true,
         opportunity: {
@@ -160,6 +175,9 @@ export async function POST(req: Request) {
         },
       },
     });
+    if (!contribution) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     const setupIncomplete = contribution.checklistItems.some(
       (i) => i.stage === "setup" && !i.checked
     );
@@ -187,8 +205,14 @@ export async function POST(req: Request) {
         reason: z.string().optional(),
       })
       .parse(body);
+    const owned = await prisma.contribution.findFirst({
+      where: { id: data.contributionId, userId },
+    });
+    if (!owned) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     await prisma.contribution.update({
-      where: { id: data.contributionId },
+      where: { id: owned.id },
       data: {
         status: "abandoned",
         abandonReason: data.reason,
@@ -197,7 +221,7 @@ export async function POST(req: Request) {
     });
     await prisma.contributionOutcome.create({
       data: {
-        contributionId: data.contributionId,
+        contributionId: owned.id,
         event: "abandoned",
         metadata: { reason: data.reason },
       },
@@ -207,14 +231,17 @@ export async function POST(req: Request) {
 
   if (action === "detect_pr") {
     const data = z.object({ contributionId: z.string() }).parse(body);
-    const contribution = await prisma.contribution.findFirstOrThrow({
-      where: { id: data.contributionId, userId: session.user.id },
+    const contribution = await prisma.contribution.findFirst({
+      where: { id: data.contributionId, userId },
       include: {
         opportunity: {
           include: { repository: true, issue: true },
         },
       },
     });
+    if (!contribution) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     const token = session.accessToken || process.env.GITHUB_TOKEN || null;
     const octokit = createOctokit(token);
     const { owner, name } = contribution.opportunity.repository;
@@ -229,10 +256,10 @@ export async function POST(req: Request) {
     });
     const login = session.user.login;
     const matches = pulls.data.filter((p) => {
-      const body = p.body || "";
+      const prBody = p.body || "";
       const byUser = p.user?.login === login;
       const refsIssue =
-        body.includes(`#${issueNumber}`) ||
+        prBody.includes(`#${issueNumber}`) ||
         p.title.includes(`#${issueNumber}`);
       return byUser || refsIssue;
     });
@@ -276,13 +303,13 @@ export async function POST(req: Request) {
         await prisma.skillEvidence.upsert({
           where: {
             userId_skill_source: {
-              userId: session.user.id,
+              userId,
               skill: lang.name,
               source: "merged_pr",
             },
           },
           create: {
-            userId: session.user.id,
+            userId,
             skill: lang.name,
             source: "merged_pr",
             contributionId: contribution.id,

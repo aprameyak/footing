@@ -1,17 +1,20 @@
-import { auth } from "@/lib/auth";
+import NextAuth from "next-auth";
+import { authConfig } from "@/lib/auth/config";
 import { NextResponse } from "next/server";
+
+const { auth } = NextAuth(authConfig);
 
 export default auth((req) => {
   const path = req.nextUrl.pathname;
-  const isLoggedIn = Boolean(req.auth?.user?.id);
+  const userId = (req.auth?.user as { id?: string } | undefined)?.id;
+  const isLoggedIn = Boolean(userId || req.auth?.user);
   const isPublic =
     path === "/login" ||
     path.startsWith("/api/auth") ||
     path === "/";
 
   if (!isLoggedIn && !isPublic && !path.startsWith("/api/")) {
-    const url = new URL("/login", req.nextUrl.origin);
-    return NextResponse.redirect(url);
+    return NextResponse.redirect(new URL("/login", req.nextUrl.origin));
   }
 
   if (isLoggedIn && path === "/login") {

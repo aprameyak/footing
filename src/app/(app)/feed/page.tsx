@@ -25,7 +25,7 @@ export default async function FeedPage({
       opportunity: {
         include: {
           repository: { include: { languages: true } },
-          issue: true,
+          issue: { include: { labels: true } },
         },
       },
     },
@@ -39,6 +39,7 @@ export default async function FeedPage({
       number: number;
       repo: string;
       languages: string[];
+      labels: string[];
       issueType: string | null;
       changeComplexity: string | null;
       setupFriction: string | null;
@@ -60,6 +61,7 @@ export default async function FeedPage({
         number: r.opportunity.issue.number,
         repo: r.opportunity.repository.fullName,
         languages: r.opportunity.repository.languages.map((l) => l.name),
+        labels: r.opportunity.issue.labels.map((l) => l.name),
         issueType: r.opportunity.issueType,
         changeComplexity: r.opportunity.changeComplexity,
         setupFriction: r.opportunity.setupFriction,
@@ -103,7 +105,25 @@ export default async function FeedPage({
           </p>
         </div>
       ) : (
-        feed.map((item) => <OpportunityCard key={item.id} item={item} />)
+        feed.map((item) => (
+          <OpportunityCard
+            key={item.id}
+            item={{
+              id: item.id,
+              title: item.title,
+              number: item.number,
+              repo: item.repo,
+              languages: item.languages,
+              labels: item.labels,
+              issueType: item.issueType,
+              changeComplexity: item.changeComplexity,
+              setupFriction: item.setupFriction,
+              updatedAt: item.updatedAt,
+              repoActivity: item.repoActivity,
+              reasons: item.reasons,
+            }}
+          />
+        ))
       )}
     </div>
   );

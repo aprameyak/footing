@@ -253,6 +253,117 @@ export async function ingestRepository(
   return { repository, readiness, opportunities, bundle };
 }
 
+export async function ingestSingleIssue(
+  owner: string,
+  repo: string,
+  number: number,
+  token?: string | null
+) {
+  const { repository } = await ingestRepository(owner, repo, token);
+  const detail = await fetchIssueDetail(owner, repo, number, token);
+  const issue = detail.issue;
+
+  if (issue.pull_request) {
+    throw new Error("URL points to a pull request, not an issue");
+  }
+
+  const labels = (issue.labels || [])
+    .map((l) => (typeof l === "string" ? l : l.name || ""))
+    .filter(Boolean);
+  const issueType = classifyIssueType(labels, issue.title, issue.body || null);
+  const changeComplexity = estimateChangeComplexity(
+    issue.title,
+    issue.body || null,
+    labels
+  );
+
+  const dbIssue = await prisma.issue.upsert({
+    where: { githubId: BigInt(issue.id) },
+    create: {
+      githubId: BigInt(issue.id),
+      repositoryId: repository.id,
+      number: issue.number,
+      title: issue.title,
+      body: issue.body,
+      state: issue.state,
+      htmlUrl: issue.html_url,
+      authorLogin: issue.user?.login || null,
+      commentsCount: issue.comments,
+      assigneeLogins: (issue.assignees || [])
+        .map((a) => a.login)
+        .filter(Boolean) as string[],
+      createdAtGithub: issue.created_at ? new Date(issue.created_at) : null,
+      updatedAtGithub: issue.updated_at ? new Date(issue.updated_at) : null,
+      lastFetchedAt: new Date(),
+    },
+    update: {
+      title: issue.title,
+      body: issue.body,
+      state: issue.state,
+      commentsCount: issue.comments,
+      assigneeLogins: (issue.assignees || [])
+        .map((a) => a.login)
+        .filter(Boolean) as string[],
+      updatedAtGithub: issue.updated_at ? new Date(issue.updated_at) : null,
+      lastFetchedAt: new Date(),
+    },
+  });
+
+  await prisma.issueLabel.deleteMany({ where: { issueId: dbIssue.id } });
+  if (labels.length) {
+    await prisma.issueLabel.createMany({
+      data: labels.map((name) => ({ issueId: dbIssue.id, name })),
+    });
+  }
+
+  await prisma.issueLinkedPullRequest.deleteMany({
+    where: { issueId: dbIssue.id },
+  });
+  for (const pr of detail.linkedPrs) {
+    await prisma.issueLinkedPullRequest.create({
+      data: {
+        issueId: dbIssue.id,
+        number: pr.number,
+        title: pr.title,
+        state: pr.state,
+        htmlUrl: pr.htmlUrl,
+        authorLogin: pr.authorLogin,
+        draft: pr.draft,
+        merged: pr.merged,
+      },
+    });
+  }
+
+  const opportunity = await prisma.opportunity.upsert({
+    where: {
+      repositoryId_issueId: {
+        repositoryId: repository.id,
+        issueId: dbIssue.id,
+      },
+    },
+    create: {
+      repositoryId: repository.id,
+      issueId: dbIssue.id,
+      status: issue.state === "open" ? "open" : "closed",
+      issueType,
+      changeComplexity,
+      setupFriction: repository.setupFriction,
+      lastScoredAt: new Date(),
+    },
+    update: {
+      status: issue.state === "open" ? "open" : "closed",
+      issueType,
+      changeComplexity,
+      setupFriction: repository.setupFriction,
+      lastScoredAt: new Date(),
+      isFiltered: false,
+      filteredReason: null,
+    },
+  });
+
+  return { repository, opportunity, issue: dbIssue };
+}
+
 export async function rankOpportunitiesForUser(
   userId: string,
   repositoryId: string
@@ -388,10 +499,16 @@ export async function deepenOpportunityAnalysis(
     token
   );
 
+  const labels = (detail.issue.labels || [])
+    .map((l) => (typeof l === "string" ? l : l.name || ""))
+    .filter(Boolean);
+
   await prisma.issue.update({
     where: { id: opportunity.issue.id },
     data: {
+      title: detail.issue.title,
       body: detail.issue.body,
+      state: detail.issue.state,
       commentsCount: detail.issue.comments,
       assigneeLogins: (detail.issue.assignees || [])
         .map((a) => a.login)
@@ -402,6 +519,13 @@ export async function deepenOpportunityAnalysis(
       lastFetchedAt: new Date(),
     },
   });
+
+  await prisma.issueLabel.deleteMany({ where: { issueId: opportunity.issue.id } });
+  if (labels.length) {
+    await prisma.issueLabel.createMany({
+      data: labels.map((name) => ({ issueId: opportunity.issue.id, name })),
+    });
+  }
 
   await prisma.issueComment.deleteMany({ where: { issueId: opportunity.issue.id } });
   for (const c of detail.comments) {
@@ -448,7 +572,7 @@ export async function deepenOpportunityAnalysis(
   const analysis = analyzeIssue({
     title: detail.issue.title,
     body: detail.issue.body || null,
-    labels: opportunity.issue.labels.map((l) => l.name),
+    labels,
     userSkills: user.skills.map((s) => s.name),
     languages: opportunity.repository.languages.map((l) => l.name),
     setupFriction:
@@ -528,8 +652,8 @@ export async function createContributionWorkspace(
       opportunityId,
       status: { notIn: ["abandoned", "merged", "closed"] },
     },
+    include: { checklistItems: true },
   });
-  if (existing) return existing;
 
   const opportunity = await prisma.opportunity.findUniqueOrThrow({
     where: { id: opportunityId },
@@ -538,6 +662,126 @@ export async function createContributionWorkspace(
       issue: { include: { analysis: true } },
     },
   });
+
+  async function buildChecklist(contributionId: string) {
+    const setupItems =
+      (opportunity.repository.analysis?.setupChecklist as Array<{
+        label: string;
+        source?: string | null;
+        inferred?: boolean;
+        confidence?: string;
+      }> | null) || [];
+
+    const verifyItems =
+      (opportunity.repository.analysis?.verifyChecklist as Array<{
+        label: string;
+        source?: string | null;
+        inferred?: boolean;
+        confidence?: string;
+      }> | null) || [];
+
+    const reproduceItems =
+      (opportunity.issue.analysis?.reproduceSteps as Array<{
+        label: string;
+        source?: string;
+        inferred?: boolean;
+        confidence?: string;
+      }> | null) || [];
+
+    const checklistData = [
+      ...setupItems.map((item, i) => ({
+        contributionId,
+        stage: "setup",
+        label: item.label,
+        provenancePath: item.source || null,
+        provenanceKind: item.inferred ? "inferred" : "document",
+        inferred: Boolean(item.inferred),
+        confidence: item.confidence || "medium",
+        sortOrder: i,
+      })),
+      ...reproduceItems.map((item, i) => ({
+        contributionId,
+        stage: "reproduce",
+        label: item.label,
+        provenancePath: item.source || null,
+        provenanceKind: item.inferred ? "suggested" : "maintainer",
+        inferred: Boolean(item.inferred),
+        confidence: item.confidence || "medium",
+        sortOrder: i,
+      })),
+      ...verifyItems.map((item, i) => ({
+        contributionId,
+        stage: "verify",
+        label: item.label,
+        provenancePath: item.source || null,
+        provenanceKind: item.inferred ? "inferred" : "document",
+        inferred: Boolean(item.inferred),
+        confidence: item.confidence || "medium",
+        sortOrder: i,
+      })),
+      {
+        contributionId,
+        stage: "submit",
+        label: "Review your diff against the issue acceptance criteria",
+        provenancePath: null,
+        provenanceKind: "suggested",
+        inferred: true,
+        confidence: "medium",
+        sortOrder: 0,
+      },
+      {
+        contributionId,
+        stage: "submit",
+        label: "Run required local checks from VERIFY",
+        provenancePath: null,
+        provenanceKind: "suggested",
+        inferred: true,
+        confidence: "medium",
+        sortOrder: 1,
+      },
+      {
+        contributionId,
+        stage: "submit",
+        label: "Commit with a clear message referencing the issue",
+        provenancePath: null,
+        provenanceKind: "suggested",
+        inferred: true,
+        confidence: "high",
+        sortOrder: 2,
+      },
+      {
+        contributionId,
+        stage: "submit",
+        label: "Push branch and open a pull request",
+        provenancePath: null,
+        provenanceKind: "suggested",
+        inferred: true,
+        confidence: "high",
+        sortOrder: 3,
+      },
+      {
+        contributionId,
+        stage: "submit",
+        label: "Fill PR template / confirm contribution requirements",
+        provenancePath: null,
+        provenanceKind: "suggested",
+        inferred: true,
+        confidence: "high",
+        sortOrder: 4,
+      },
+    ];
+
+    if (checklistData.length) {
+      await prisma.contributionChecklistItem.createMany({ data: checklistData });
+    }
+  }
+
+  if (existing) {
+    if (existing.checklistItems.length === 0) {
+      await buildChecklist(existing.id);
+    }
+    return existing;
+  }
 
   const contribution = await prisma.contribution.create({
     data: {
@@ -562,116 +806,7 @@ export async function createContributionWorkspace(
     },
   });
 
-  const setupItems =
-    (opportunity.repository.analysis?.setupChecklist as Array<{
-      label: string;
-      source?: string | null;
-      inferred?: boolean;
-      confidence?: string;
-    }> | null) || [];
-
-  const verifyItems =
-    (opportunity.repository.analysis?.verifyChecklist as Array<{
-      label: string;
-      source?: string | null;
-      inferred?: boolean;
-      confidence?: string;
-    }> | null) || [];
-
-  const reproduceItems =
-    (opportunity.issue.analysis?.reproduceSteps as Array<{
-      label: string;
-      source?: string;
-      inferred?: boolean;
-      confidence?: string;
-    }> | null) || [];
-
-  const checklistData = [
-    ...setupItems.map((item, i) => ({
-      contributionId: contribution.id,
-      stage: "setup",
-      label: item.label,
-      provenancePath: item.source || null,
-      provenanceKind: item.inferred ? "inferred" : "document",
-      inferred: Boolean(item.inferred),
-      confidence: item.confidence || "medium",
-      sortOrder: i,
-    })),
-    ...reproduceItems.map((item, i) => ({
-      contributionId: contribution.id,
-      stage: "reproduce",
-      label: item.label,
-      provenancePath: item.source || null,
-      provenanceKind: item.inferred ? "suggested" : "maintainer",
-      inferred: Boolean(item.inferred),
-      confidence: item.confidence || "medium",
-      sortOrder: i,
-    })),
-    ...verifyItems.map((item, i) => ({
-      contributionId: contribution.id,
-      stage: "verify",
-      label: item.label,
-      provenancePath: item.source || null,
-      provenanceKind: item.inferred ? "inferred" : "document",
-      inferred: Boolean(item.inferred),
-      confidence: item.confidence || "medium",
-      sortOrder: i,
-    })),
-    {
-      contributionId: contribution.id,
-      stage: "submit",
-      label: "Review your diff against the issue acceptance criteria",
-      provenancePath: null,
-      provenanceKind: "suggested",
-      inferred: true,
-      confidence: "medium",
-      sortOrder: 0,
-    },
-    {
-      contributionId: contribution.id,
-      stage: "submit",
-      label: "Run required local checks from VERIFY",
-      provenancePath: null,
-      provenanceKind: "suggested",
-      inferred: true,
-      confidence: "medium",
-      sortOrder: 1,
-    },
-    {
-      contributionId: contribution.id,
-      stage: "submit",
-      label: "Commit with a clear message referencing the issue",
-      provenancePath: null,
-      provenanceKind: "suggested",
-      inferred: true,
-      confidence: "high",
-      sortOrder: 2,
-    },
-    {
-      contributionId: contribution.id,
-      stage: "submit",
-      label: "Push branch and open a pull request",
-      provenancePath: null,
-      provenanceKind: "suggested",
-      inferred: true,
-      confidence: "high",
-      sortOrder: 3,
-    },
-    {
-      contributionId: contribution.id,
-      stage: "submit",
-      label: "Fill PR template / confirm contribution requirements",
-      provenancePath: null,
-      provenanceKind: "suggested",
-      inferred: true,
-      confidence: "high",
-      sortOrder: 4,
-    },
-  ];
-
-  if (checklistData.length) {
-    await prisma.contributionChecklistItem.createMany({ data: checklistData });
-  }
+  await buildChecklist(contribution.id);
 
   await prisma.recommendationEvent.create({
     data: {

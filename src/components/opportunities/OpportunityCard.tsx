@@ -42,6 +42,11 @@ export function OpportunityCard({ item }: { item: OpportunityCardData }) {
             {l}
           </span>
         ))}
+        {(item.labels || []).slice(0, 4).map((l) => (
+          <span key={l} className="text-[var(--text-faint)]">
+            {l}
+          </span>
+        ))}
         {item.issueType && (
           <span className="text-[var(--text-faint)]">{item.issueType}</span>
         )}

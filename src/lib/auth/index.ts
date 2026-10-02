@@ -2,6 +2,7 @@ import NextAuth from "next-auth";
 import GitHub from "next-auth/providers/github";
 import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/db/prisma";
+import { authConfig } from "@/lib/auth/config";
 
 const providers = [];
 
@@ -28,10 +29,11 @@ if (process.env.ENABLE_DEV_LOGIN === "true" || !process.env.GITHUB_CLIENT_ID) {
         login: { label: "Login", type: "text" },
       },
       async authorize(credentials) {
-        const login = String(credentials?.login || "devuser").replace(
-          /[^a-zA-Z0-9_-]/g,
-          ""
-        ) || "devuser";
+        const login =
+          String(credentials?.login || "devuser").replace(
+            /[^a-zA-Z0-9_-]/g,
+            ""
+          ) || "devuser";
         const user = await prisma.user.upsert({
           where: { githubId: `dev:${login}` },
           create: {
@@ -58,12 +60,10 @@ if (process.env.ENABLE_DEV_LOGIN === "true" || !process.env.GITHUB_CLIENT_ID) {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  ...authConfig,
   providers,
-  session: { strategy: "jwt" },
-  pages: {
-    signIn: "/login",
-  },
   callbacks: {
+    ...authConfig.callbacks,
     async signIn({ user, account, profile }) {
       if (account?.provider === "github" && profile) {
         const githubId = String((profile as { id?: string | number }).id);
@@ -93,32 +93,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user, account, profile }) {
       if (account?.provider === "github" && profile) {
         const githubId = String((profile as { id?: string | number }).id);
-        const dbUser = await prisma.user.findUnique({ where: { githubId } });
-        if (dbUser) {
-          token.userId = dbUser.id;
-          token.login = dbUser.login;
-          token.accessToken = account.access_token;
+        let dbUser = await prisma.user.findUnique({ where: { githubId } });
+        if (!dbUser) {
+          const login =
+            (profile as { login?: string }).login || user?.name || "user";
+          dbUser = await prisma.user.create({
+            data: {
+              githubId,
+              login,
+              name: user?.name || login,
+              email: user?.email || null,
+              avatarUrl: user?.image || null,
+              accessToken: account.access_token || null,
+            },
+          });
         }
+        token.userId = dbUser.id;
+        token.login = dbUser.login;
+        token.accessToken = account.access_token;
+        return token;
       }
       if (account?.provider === "dev-login" && user?.id) {
         token.userId = user.id;
         token.login = user.name || "devuser";
-      }
-      if (!token.userId && user?.id) {
-        token.userId = user.id;
-        token.login = user.name || "user";
+        return token;
       }
       return token;
     },
-    async session({ session, token }) {
-      if (session.user) {
-        session.user.id = (token.userId as string) || "";
-        session.user.login = (token.login as string) || session.user.name || "";
-      }
-      session.accessToken = token.accessToken as string | undefined;
-      return session;
-    },
   },
-  trustHost: true,
-  secret: process.env.AUTH_SECRET || "dev-secret-change-me",
 });

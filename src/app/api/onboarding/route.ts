@@ -24,6 +24,7 @@ export async function POST(req: Request) {
     prisma.userSkill.deleteMany({ where: { userId } }),
     prisma.userLearningGoal.deleteMany({ where: { userId } }),
     prisma.userInterest.deleteMany({ where: { userId } }),
+    prisma.userRepositoryInterest.deleteMany({ where: { userId } }),
   ]);
 
   if (body.skills.length) {

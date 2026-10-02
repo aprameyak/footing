@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { deepenOpportunityAnalysis } from "@/lib/github/ingest";
 import { prisma } from "@/lib/db/prisma";
+import { toJson } from "@/lib/utils/json";
 
 export async function GET(
   _req: Request,
@@ -42,7 +43,7 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  return NextResponse.json(opportunity);
+  return NextResponse.json(toJson(opportunity));
 }
 
 export async function POST(
@@ -91,8 +92,10 @@ export async function POST(
 
   const token = session.accessToken || process.env.GITHUB_TOKEN || null;
   const result = await deepenOpportunityAnalysis(id, session.user.id, token);
-  return NextResponse.json({
-    analysis: result.analysis,
-    repositoryAnalysis: result.repositoryAnalysis,
-  });
+  return NextResponse.json(
+    toJson({
+      analysis: result.analysis,
+      repositoryAnalysis: result.repositoryAnalysis,
+    })
+  );
 }

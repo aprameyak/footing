@@ -12,7 +12,7 @@ export default async function SavedPage() {
       opportunity: {
         include: {
           repository: { include: { languages: true } },
-          issue: true,
+          issue: { include: { labels: true } },
           matchReasons: { where: { userId: user.id } },
         },
       },
@@ -42,6 +42,7 @@ export default async function SavedPage() {
               number: s.opportunity.issue.number,
               repo: s.opportunity.repository.fullName,
               languages: s.opportunity.repository.languages.map((l) => l.name),
+              labels: s.opportunity.issue.labels.map((l) => l.name),
               issueType: s.opportunity.issueType,
               changeComplexity: s.opportunity.changeComplexity,
               setupFriction: s.opportunity.setupFriction,
