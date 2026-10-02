@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { getGithubToken } from "@/lib/auth/session";
 import { deepenOpportunityAnalysis } from "@/lib/github/ingest";
 import { prisma } from "@/lib/db/prisma";
 import { toJson } from "@/lib/utils/json";
@@ -90,7 +91,7 @@ export async function POST(
     return NextResponse.json({ ok: true });
   }
 
-  const token = session.accessToken || process.env.GITHUB_TOKEN || null;
+  const token = await getGithubToken(session.user.id);
   const result = await deepenOpportunityAnalysis(id, session.user.id, token);
   return NextResponse.json(
     toJson({

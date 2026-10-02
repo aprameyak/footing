@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { getGithubToken } from "@/lib/auth/session";
 import { createContributionWorkspace } from "@/lib/github/ingest";
 import { prisma } from "@/lib/db/prisma";
 import { z } from "zod";
@@ -61,28 +62,55 @@ export async function POST(req: Request) {
   }
 
   const userId = session.user.id;
-  const body = await req.json();
-  const action = body.action as string;
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  const action = body.action as string | undefined;
+  if (!action) {
+    return NextResponse.json({ error: "Missing action" }, { status: 400 });
+  }
 
   if (action === "start") {
-    const { opportunityId } = z
-      .object({ opportunityId: z.string() })
-      .parse(body);
-    const contribution = await createContributionWorkspace(userId, opportunityId);
-    return NextResponse.json({ id: contribution.id });
+    const parsed = z
+      .object({ opportunityId: z.string().min(1) })
+      .safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "opportunityId required" },
+        { status: 400 }
+      );
+    }
+    try {
+      const contribution = await createContributionWorkspace(
+        userId,
+        parsed.data.opportunityId
+      );
+      return NextResponse.json({ id: contribution.id });
+    } catch {
+      return NextResponse.json(
+        { error: "Could not start contribution" },
+        { status: 404 }
+      );
+    }
   }
 
   if (action === "update_stage") {
     const data = z
       .object({
-        contributionId: z.string(),
-        stage: z.string(),
+        contributionId: z.string().min(1),
+        stage: z.string().min(1),
         complete: z.boolean().optional(),
       })
-      .parse(body);
+      .safeParse(body);
+    if (!data.success) {
+      return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    }
 
     const owned = await prisma.contribution.findFirst({
-      where: { id: data.contributionId, userId },
+      where: { id: data.data.contributionId, userId },
     });
     if (!owned) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -91,29 +119,29 @@ export async function POST(req: Request) {
     await prisma.contribution.update({
       where: { id: owned.id },
       data: {
-        currentStage: data.stage,
+        currentStage: data.data.stage,
         status:
-          data.stage === "implement"
+          data.data.stage === "implement"
             ? "implementation_in_progress"
             : undefined,
       },
     });
 
-    if (data.complete) {
+    if (data.data.complete) {
       await prisma.contributionStage.updateMany({
         where: {
           contributionId: owned.id,
-          stage: data.stage,
+          stage: data.data.stage,
         },
         data: { completedAt: new Date() },
       });
       await prisma.contributionOutcome.create({
         data: {
           contributionId: owned.id,
-          event: `stage_${data.stage}_completed`,
+          event: `stage_${data.data.stage}_completed`,
         },
       });
-      if (data.stage === "setup") {
+      if (data.data.stage === "setup") {
         await prisma.contribution.update({
           where: { id: owned.id },
           data: {
@@ -136,14 +164,17 @@ export async function POST(req: Request) {
   if (action === "toggle_checklist") {
     const data = z
       .object({
-        itemId: z.string(),
+        itemId: z.string().min(1),
         checked: z.boolean(),
       })
-      .parse(body);
+      .safeParse(body);
+    if (!data.success) {
+      return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    }
 
     const item = await prisma.contributionChecklistItem.findFirst({
       where: {
-        id: data.itemId,
+        id: data.data.itemId,
         contribution: { userId },
       },
     });
@@ -153,7 +184,7 @@ export async function POST(req: Request) {
 
     await prisma.contributionChecklistItem.update({
       where: { id: item.id },
-      data: { checked: data.checked },
+      data: { checked: data.data.checked },
     });
     return NextResponse.json({ ok: true });
   }
@@ -161,13 +192,16 @@ export async function POST(req: Request) {
   if (action === "stuck") {
     const data = z
       .object({
-        contributionId: z.string(),
-        category: z.string(),
+        contributionId: z.string().min(1),
+        category: z.string().min(1),
         detail: z.string().optional(),
       })
-      .parse(body);
+      .safeParse(body);
+    if (!data.success) {
+      return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    }
     const contribution = await prisma.contribution.findFirst({
-      where: { id: data.contributionId, userId },
+      where: { id: data.data.contributionId, userId },
       include: {
         checklistItems: true,
         opportunity: {
@@ -181,7 +215,7 @@ export async function POST(req: Request) {
     const setupIncomplete = contribution.checklistItems.some(
       (i) => i.stage === "setup" && !i.checked
     );
-    const guidance = mentorGuidance(data.category, {
+    const guidance = mentorGuidance(data.data.category, {
       repoFullName: contribution.opportunity.repository.fullName,
       issueTitle: contribution.opportunity.issue.title,
       currentStage: contribution.currentStage,
@@ -190,8 +224,8 @@ export async function POST(req: Request) {
     const blocker = await prisma.contributionBlocker.create({
       data: {
         contributionId: contribution.id,
-        category: data.category,
-        detail: data.detail,
+        category: data.data.category,
+        detail: data.data.detail,
         guidance,
       },
     });
@@ -201,12 +235,15 @@ export async function POST(req: Request) {
   if (action === "abandon") {
     const data = z
       .object({
-        contributionId: z.string(),
+        contributionId: z.string().min(1),
         reason: z.string().optional(),
       })
-      .parse(body);
+      .safeParse(body);
+    if (!data.success) {
+      return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    }
     const owned = await prisma.contribution.findFirst({
-      where: { id: data.contributionId, userId },
+      where: { id: data.data.contributionId, userId },
     });
     if (!owned) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -215,7 +252,7 @@ export async function POST(req: Request) {
       where: { id: owned.id },
       data: {
         status: "abandoned",
-        abandonReason: data.reason,
+        abandonReason: data.data.reason,
         abandonedAt: new Date(),
       },
     });
@@ -223,16 +260,21 @@ export async function POST(req: Request) {
       data: {
         contributionId: owned.id,
         event: "abandoned",
-        metadata: { reason: data.reason },
+        metadata: { reason: data.data.reason },
       },
     });
     return NextResponse.json({ ok: true });
   }
 
   if (action === "detect_pr") {
-    const data = z.object({ contributionId: z.string() }).parse(body);
+    const data = z
+      .object({ contributionId: z.string().min(1) })
+      .safeParse(body);
+    if (!data.success) {
+      return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    }
     const contribution = await prisma.contribution.findFirst({
-      where: { id: data.contributionId, userId },
+      where: { id: data.data.contributionId, userId },
       include: {
         opportunity: {
           include: { repository: true, issue: true },
@@ -242,7 +284,7 @@ export async function POST(req: Request) {
     if (!contribution) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    const token = session.accessToken || process.env.GITHUB_TOKEN || null;
+    const token = await getGithubToken(userId);
     const octokit = createOctokit(token);
     const { owner, name } = contribution.opportunity.repository;
     const issueNumber = contribution.opportunity.issue.number;

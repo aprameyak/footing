@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
+import { getGithubToken } from "@/lib/auth/session";
 import { parseGitHubInput } from "@/lib/utils/github-parse";
 import {
   ingestRepository,
@@ -38,7 +39,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const token = session.accessToken || process.env.GITHUB_TOKEN || null;
+  const token = await getGithubToken(session.user.id);
 
   try {
     let repositoryId: string;

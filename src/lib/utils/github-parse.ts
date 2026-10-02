@@ -91,8 +91,6 @@ export const CONTRIBUTION_STAGES = [
   "submit",
 ] as const;
 
-export type ContributionStageName = (typeof CONTRIBUTION_STAGES)[number];
-
 export const STUCK_CATEGORIES = [
   { id: "repo_wont_run", label: "Repo won't run" },
   { id: "dependency", label: "Dependency/install problem" },

@@ -117,7 +117,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
         token.userId = dbUser.id;
         token.login = dbUser.login;
-        token.accessToken = account.access_token;
         return token;
       }
       if (account?.provider === "dev-login" && user?.id) {

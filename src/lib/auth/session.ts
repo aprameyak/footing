@@ -22,3 +22,12 @@ export async function requireUser() {
   }
   return { session, user };
 }
+
+/** Server-only GitHub token: DB OAuth token, else optional GITHUB_TOKEN. */
+export async function getGithubToken(userId: string): Promise<string | null> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { accessToken: true },
+  });
+  return user?.accessToken || process.env.GITHUB_TOKEN || null;
+}

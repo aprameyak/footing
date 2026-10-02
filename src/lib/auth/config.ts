@@ -27,7 +27,7 @@ export const authConfig = {
         session.user.id = (token.userId as string) || "";
         session.user.login = (token.login as string) || session.user.name || "";
       }
-      session.accessToken = token.accessToken as string | undefined;
+      // Keep GitHub OAuth tokens off the client-facing session.
       return session;
     },
   },
