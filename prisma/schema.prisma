@@ -1,0 +1,478 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  githubId      String    @unique
+  login         String
+  name          String?
+  email         String?
+  avatarUrl     String?
+  accessToken   String?
+  challengePref String    @default("comfortable")
+  onboardedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  skills               UserSkill[]
+  learningGoals        UserLearningGoal[]
+  interests            UserInterest[]
+  repositoryInterests  UserRepositoryInterest[]
+  savedOpportunities   SavedOpportunity[]
+  hiddenOpportunities  HiddenOpportunity[]
+  contributions        Contribution[]
+  skillEvidence        SkillEvidence[]
+  recommendationEvents RecommendationEvent[]
+  accounts             Account[]
+  sessions             Session[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model UserSkill {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+}
+
+model UserLearningGoal {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+}
+
+model UserInterest {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+}
+
+model UserRepositoryInterest {
+  id             String   @id @default(cuid())
+  userId         String
+  fullName       String
+  repositoryId   String?
+  createdAt      DateTime @default(now())
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repository     Repository? @relation(fields: [repositoryId], references: [id])
+
+  @@unique([userId, fullName])
+}
+
+model Repository {
+  id                    String   @id @default(cuid())
+  githubId              BigInt   @unique
+  owner                 String
+  name                  String
+  fullName              String   @unique
+  description           String?
+  htmlUrl               String
+  defaultBranch         String   @default("main")
+  stars                 Int      @default(0)
+  forks                 Int      @default(0)
+  openIssuesCount       Int      @default(0)
+  license               String?
+  isArchived            Boolean  @default(false)
+  isFork                Boolean  @default(false)
+  pushedAt              DateTime?
+  createdAtGithub       DateTime?
+  hasContributing       Boolean  @default(false)
+  hasReadme             Boolean  @default(false)
+  hasIssueTemplates     Boolean  @default(false)
+  setupFriction         String?
+  lastFetchedAt         DateTime?
+  lastAnalyzedAt        DateTime?
+  rawMetadata           Json?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  topics                RepositoryTopic[]
+  languages             RepositoryLanguage[]
+  documents             RepositoryDocument[]
+  contributorSignals    RepositoryContributorSignal[]
+  analysis              RepositoryAnalysis?
+  issues                Issue[]
+  opportunities         Opportunity[]
+  userInterests         UserRepositoryInterest[]
+}
+
+model RepositoryTopic {
+  id           String     @id @default(cuid())
+  repositoryId String
+  name         String
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([repositoryId, name])
+}
+
+model RepositoryLanguage {
+  id           String     @id @default(cuid())
+  repositoryId String
+  name         String
+  bytes        Int        @default(0)
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([repositoryId, name])
+}
+
+model RepositoryDocument {
+  id           String     @id @default(cuid())
+  repositoryId String
+  kind         String
+  path         String
+  content      String
+  sha          String?
+  fetchedAt    DateTime   @default(now())
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([repositoryId, path])
+}
+
+model RepositoryContributorSignal {
+  id           String     @id @default(cuid())
+  repositoryId String
+  key          String
+  value        String
+  evidence     String?
+  confidence   String     @default("medium")
+  inferred     Boolean    @default(true)
+  source       String?
+  createdAt    DateTime   @default(now())
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@index([repositoryId, key])
+}
+
+model RepositoryAnalysis {
+  id                    String     @id @default(cuid())
+  repositoryId          String     @unique
+  contributingFound     Boolean    @default(false)
+  setupDocumented       Boolean    @default(false)
+  testInstructionsFound Boolean    @default(false)
+  issueTemplatesFound   Boolean    @default(false)
+  recentActivity        Boolean    @default(false)
+  recentExternalPrs     Boolean    @default(false)
+  maintainerResponses   String?
+  claRequired           String     @default("not_detected")
+  aiPolicy              String     @default("not_detected")
+  setupFriction         String     @default("moderate")
+  setupChecklist        Json?
+  verifyChecklist       Json?
+  analysisJson          Json?
+  analyzedAt            DateTime   @default(now())
+  repository            Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+}
+
+model Issue {
+  id              String    @id @default(cuid())
+  githubId        BigInt    @unique
+  repositoryId    String
+  number          Int
+  title           String
+  body            String?
+  state           String
+  htmlUrl         String
+  authorLogin     String?
+  isPullRequest   Boolean   @default(false)
+  commentsCount   Int       @default(0)
+  reactionsCount  Int       @default(0)
+  assigneeLogins  String[]  @default([])
+  createdAtGithub DateTime?
+  updatedAtGithub DateTime?
+  closedAt        DateTime?
+  rawPayload      Json?
+  lastFetchedAt   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  repository      Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  labels          IssueLabel[]
+  comments        IssueComment[]
+  linkedPrs       IssueLinkedPullRequest[]
+  analysis        IssueAnalysis?
+  opportunities   Opportunity[]
+
+  @@unique([repositoryId, number])
+}
+
+model IssueLabel {
+  id      String @id @default(cuid())
+  issueId String
+  name    String
+  color   String?
+  issue   Issue  @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@unique([issueId, name])
+}
+
+model IssueComment {
+  id              String   @id @default(cuid())
+  issueId         String
+  githubId        BigInt   @unique
+  authorLogin     String?
+  body            String
+  createdAtGithub DateTime?
+  authorAssociation String?
+  issue           Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+}
+
+model IssueLinkedPullRequest {
+  id           String  @id @default(cuid())
+  issueId      String
+  number       Int
+  title        String?
+  state        String
+  htmlUrl      String
+  authorLogin  String?
+  draft        Boolean @default(false)
+  merged       Boolean @default(false)
+  issue        Issue   @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@unique([issueId, number])
+}
+
+model IssueAnalysis {
+  id                   String   @id @default(cuid())
+  issueId              String   @unique
+  summary              String?
+  maintainerRequested  String?
+  inferredRequirements String?
+  knowledgeKnown       String[] @default([])
+  knowledgeEncounter   String[] @default([])
+  codeChange           String?
+  codebaseContext      String?
+  conceptComplexity    String?
+  setupFriction        String?
+  difficultyWhy        String?
+  viabilitySignals     Json?
+  relevantPaths        Json?
+  reproduceSteps       Json?
+  analysisJson         Json?
+  analyzedAt           DateTime @default(now())
+  issue                Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+}
+
+model Opportunity {
+  id               String   @id @default(cuid())
+  repositoryId     String
+  issueId          String
+  status           String   @default("open")
+  issueType        String?
+  changeComplexity String?
+  setupFriction    String?
+  filteredReason   String?
+  isFiltered       Boolean  @default(false)
+  lastScoredAt     DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  repository       Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  issue            Issue      @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  matchReasons     OpportunityMatchReason[]
+  savedBy          SavedOpportunity[]
+  hiddenBy         HiddenOpportunity[]
+  contributions    Contribution[]
+  recommendationEvents RecommendationEvent[]
+
+  @@unique([repositoryId, issueId])
+}
+
+model OpportunityMatchReason {
+  id            String      @id @default(cuid())
+  opportunityId String
+  userId        String
+  polarity      String
+  reason        String
+  weight        Float       @default(1)
+  score         Float?
+  createdAt     DateTime    @default(now())
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@index([opportunityId, userId])
+}
+
+model SavedOpportunity {
+  id            String      @id @default(cuid())
+  userId        String
+  opportunityId String
+  createdAt     DateTime    @default(now())
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, opportunityId])
+}
+
+model HiddenOpportunity {
+  id            String      @id @default(cuid())
+  userId        String
+  opportunityId String
+  reason        String?
+  createdAt     DateTime    @default(now())
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, opportunityId])
+}
+
+model Contribution {
+  id             String    @id @default(cuid())
+  userId         String
+  opportunityId  String
+  status         String    @default("started")
+  currentStage   String    @default("understand")
+  abandonReason  String?
+  startedAt      DateTime  @default(now())
+  setupCompletedAt DateTime?
+  prSubmittedAt  DateTime?
+  mergedAt       DateTime?
+  abandonedAt    DateTime?
+  updatedAt      DateTime  @updatedAt
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunity    Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  stages         ContributionStage[]
+  checklistItems ContributionChecklistItem[]
+  blockers       ContributionBlocker[]
+  pullRequests   PullRequest[]
+  outcomes       ContributionOutcome[]
+
+  @@index([userId, status])
+}
+
+model ContributionStage {
+  id             String       @id @default(cuid())
+  contributionId String
+  stage          String
+  completedAt    DateTime?
+  notes          String?
+  contribution   Contribution @relation(fields: [contributionId], references: [id], onDelete: Cascade)
+
+  @@unique([contributionId, stage])
+}
+
+model ContributionChecklistItem {
+  id             String       @id @default(cuid())
+  contributionId String
+  stage          String
+  label          String
+  checked        Boolean      @default(false)
+  provenancePath String?
+  provenanceKind String?
+  inferred       Boolean      @default(false)
+  confidence     String       @default("high")
+  sortOrder      Int          @default(0)
+  contribution   Contribution @relation(fields: [contributionId], references: [id], onDelete: Cascade)
+
+  @@index([contributionId, stage])
+}
+
+model ContributionBlocker {
+  id             String       @id @default(cuid())
+  contributionId String
+  category       String
+  detail         String?
+  guidance       String?
+  createdAt      DateTime     @default(now())
+  resolvedAt     DateTime?
+  contribution   Contribution @relation(fields: [contributionId], references: [id], onDelete: Cascade)
+}
+
+model PullRequest {
+  id             String       @id @default(cuid())
+  contributionId String
+  number         Int
+  title          String?
+  state          String
+  htmlUrl        String
+  merged         Boolean      @default(false)
+  draft          Boolean      @default(false)
+  createdAtGithub DateTime?
+  contribution   Contribution @relation(fields: [contributionId], references: [id], onDelete: Cascade)
+
+  @@unique([contributionId, number])
+}
+
+model ContributionOutcome {
+  id             String       @id @default(cuid())
+  contributionId String
+  event          String
+  metadata       Json?
+  createdAt      DateTime     @default(now())
+  contribution   Contribution @relation(fields: [contributionId], references: [id], onDelete: Cascade)
+
+  @@index([contributionId, event])
+}
+
+model SkillEvidence {
+  id             String   @id @default(cuid())
+  userId         String
+  skill          String
+  source         String
+  contributionId String?
+  count          Int      @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, skill, source])
+}
+
+model RecommendationEvent {
+  id            String       @id @default(cuid())
+  userId        String
+  opportunityId String?
+  event         String
+  metadata      Json?
+  createdAt     DateTime     @default(now())
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+
+  @@index([userId, event])
+}
