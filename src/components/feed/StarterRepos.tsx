@@ -41,8 +41,7 @@ export function StarterRepos() {
 
   return (
     <div className="panel p-4 text-[13px] text-[var(--text-muted)]">
-      <p className="mb-2">No ranked opportunities yet.</p>
-      <p className="mb-3">Paste a public repository above, or analyze a starter:</p>
+      <p className="mb-3">No opportunities yet. Paste a repo above or analyze:</p>
       <ul className="flex flex-wrap gap-2">
         {STARTERS.map((repo) => (
           <li key={repo}>
@@ -60,10 +59,6 @@ export function StarterRepos() {
       {error && (
         <p className="mt-2 text-[12px] text-[var(--negative)]">{error}</p>
       )}
-      <p className="mt-3 text-[12px] text-[var(--text-faint)]">
-        Works best with matching skills (e.g. React + TypeScript) and a learning
-        goal like testing.
-      </p>
     </div>
   );
 }
