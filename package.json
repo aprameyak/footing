@@ -8,7 +8,10 @@
     "ignoredBuiltDependencies": [
       "sharp",
       "unrs-resolver"
-    ]
+    ],
+    "overrides": {
+      "minimatch@^10.0.0": "^11.0.1"
+    }
   },
   "scripts": {
     "dev": "next dev",
